@@ -4,10 +4,10 @@ CSE 434 - Socket Programming Project
 DHT Peer (Milestone: register, setup-dht, dht-complete)
 Group 81 - Port range: 40500 ~ 40999
 
-用法:
+Usage:
     python3 peer.py <manager-ip> <manager-port>
 
-然后从 stdin 输入命令，例如:
+Then enter commands from stdin, for example:
     register Alice 127.0.0.1 40501 40502
     setup-dht Alice 3 1950
     dht-complete Alice
@@ -19,13 +19,13 @@ import csv
 import os
 
 # ──────────────────────────────────────────────
-# 常量
+# Constants
 # ──────────────────────────────────────────────
-BUFFER_SIZE = 65536   # 大一些，setup-dht 回复可能很长
+BUFFER_SIZE = 65536   # Larger buffer; setup-dht reply can be long
 
 
 # ──────────────────────────────────────────────
-# 工具函数
+# Utility functions
 # ──────────────────────────────────────────────
 
 def is_prime(n):
@@ -42,7 +42,7 @@ def is_prime(n):
 
 
 def next_prime(n):
-    """返回大于 n 的第一个素数"""
+    """Return the first prime greater than n"""
     candidate = n + 1
     while not is_prime(candidate):
         candidate += 1
@@ -51,8 +51,8 @@ def next_prime(n):
 
 def load_csv(year):
     """
-    读取 details-YYYY.csv，返回记录列表。
-    每条记录是一个 dict（14个字段）。
+    Read details-YYYY.csv and return a list of records.
+    Each record is a dict (14 fields).
     """
     filename = f"details-{year}.csv"
     if not os.path.exists(filename):
@@ -68,18 +68,18 @@ def load_csv(year):
 
 
 # ──────────────────────────────────────────────
-# DHT 本地存储
+# DHT local storage
 # ──────────────────────────────────────────────
 # local_hash_table[pos] = record  (pos = event_id mod s)
 local_hash_table = {}
-my_id      = None   # 本节点在 ring 中的 id
-ring_size  = None   # ring 大小 n
-right_neighbour = None  # (ip, p_port)  右邻居
-peer_tuples = []    # 所有 peer 的 3-tuple 列表: [(name, ip, p_port), ...]
+my_id      = None   # this node's id in the ring
+ring_size  = None   # ring size n
+right_neighbour = None  # (ip, p_port)  right neighbour
+peer_tuples = []    # list of all peers' 3-tuples: [(name, ip, p_port), ...]
 
 
 # ──────────────────────────────────────────────
-# 向 Manager 发消息并等待回复
+# Send a message to the Manager and wait for reply
 # ──────────────────────────────────────────────
 
 def send_to_manager(sock, manager_addr, message):
@@ -92,7 +92,7 @@ def send_to_manager(sock, manager_addr, message):
 
 
 # ──────────────────────────────────────────────
-# 向另一个 Peer 发消息（UDP，不等回复）
+# Send a message to another Peer (UDP, don't wait for reply)
 # ──────────────────────────────────────────────
 
 def send_to_peer(sock, ip, port, message):
@@ -101,13 +101,13 @@ def send_to_peer(sock, ip, port, message):
 
 
 # ──────────────────────────────────────────────
-# 发送 store 命令（沿 ring 转发记录）
+# Send store command (forward record along the ring)
 # ──────────────────────────────────────────────
 
 def forward_store(sock, target_id, pos, record):
     """
-    把 store 命令发给右邻居，让它沿 ring 转发直到 target_id。
-    消息格式:
+    Send a store command to the right neighbour so it forwards along the ring until target_id.
+    Message format:
         store <target_id> <pos> <field1>|<field2>|...|<field14>
     """
     fields = list(record.values())
@@ -118,13 +118,13 @@ def forward_store(sock, target_id, pos, record):
 
 
 # ──────────────────────────────────────────────
-# 处理收到的 Peer 消息（在 setup 阶段）
+# Handle messages received from Peers (during setup phase)
 # ──────────────────────────────────────────────
 
 def handle_peer_message(sock, data):
     """
-    处理从其他 peer 收到的消息。
-    返回 True 表示继续，False 表示结束等待。
+    Handle messages received from other peers.
+    Return True to continue, False to stop waiting.
     """
     global my_id, ring_size, right_neighbour, peer_tuples, local_hash_table
 
@@ -136,42 +136,42 @@ def handle_peer_message(sock, data):
 
     command = parts[0].lower()
 
-    # ── set-id 命令 ──────────────────────────────
-    # 格式: set-id <id> <n> peer0 ip0 p0 peer1 ip1 p1 ...
+    # ── set-id command ──────────────────────────────
+    # Format: set-id <id> <n> peer0 ip0 p0 peer1 ip1 p1 ...
     if command == "set-id":
         my_id     = int(parts[1])
         ring_size = int(parts[2])
-        # 解析所有 peer 3-tuples
+        # parse all peer 3-tuples
         peer_tuples = []
         idx = 3
         while idx + 2 < len(parts):
             peer_tuples.append((parts[idx], parts[idx+1], int(parts[idx+2])))
             idx += 3
 
-        # 右邻居是 id = (my_id + 1) mod ring_size
+        # right neighbour is id = (my_id + 1) mod ring_size
         right_id = (my_id + 1) % ring_size
         right_name, right_ip, right_port = peer_tuples[right_id]
         right_neighbour = (right_ip, right_port)
         print(f"[Peer] Set id={my_id}, ring_size={ring_size}, right_neighbour={right_neighbour}")
-        return False   # set-id 收到后不需要继续等待
+        return False   # after receiving set-id we don't need to keep waiting
 
-    # ── store 命令 ──────────────────────────────
-    # 格式: store <target_id> <pos> <record_str>
+    # ── store command ──────────────────────────────
+    # Format: store <target_id> <pos> <record_str>
     elif command == "store":
         target_id = int(parts[1])
         pos       = int(parts[2])
         record_str = parts[3] if len(parts) > 3 else ""
 
         if target_id == my_id:
-            # 存入本地
+            # store locally
             local_hash_table[pos] = record_str
         else:
-            # 继续转发给右邻居
+            # forward to right neighbour
             ip, port = right_neighbour
             send_to_peer(sock, ip, port, message)
-        return True   # 继续监听
+        return True   # continue listening
 
-    # ── rebuild-dht 命令（Milestone 不需要，预留）──
+    # ── rebuild-dht command (reserved; not needed for milestone) ──
     elif command == "rebuild-dht":
         print(f"[Peer] rebuild-dht received (not implemented in milestone)")
         return True
@@ -182,16 +182,16 @@ def handle_peer_message(sock, data):
 
 
 # ──────────────────────────────────────────────
-# Leader 执行 setup-dht 后续步骤
+# Leader performs post setup-dht steps
 # ──────────────────────────────────────────────
 
 def leader_setup_dht(sock, m_port, p_port, manager_addr, n, year, tuples):
     """
-    Leader 在收到 setup-dht SUCCESS 后执行:
-    1. 发送 set-id 给其他所有 peer
-    2. 读取 CSV，分发 store 命令
-    3. 打印每个节点存了多少条记录
-    4. 发送 dht-complete 给 manager
+    After the leader receives setup-dht SUCCESS it performs:
+    1. Send set-id to all other peers
+    2. Read the CSV and distribute store commands
+    3. Print how many records each node stored
+    4. Send dht-complete to manager
     """
     global my_id, ring_size, right_neighbour, peer_tuples, local_hash_table
 
@@ -203,14 +203,14 @@ def leader_setup_dht(sock, m_port, p_port, manager_addr, n, year, tuples):
     right_name, right_ip, right_port = peer_tuples[right_id]
     right_neighbour = (right_ip, right_port)
 
-    # 1. 发送 set-id 给 peer 1 .. n-1
+    # 1. Send set-id to peers 1 .. n-1
     tuples_str = " ".join(f"{name} {ip} {pp}" for name, ip, pp in peer_tuples)
     for i in range(1, n):
         name, ip, pp = peer_tuples[i]
         msg = f"set-id {i} {n} {tuples_str}"
         send_to_peer(sock, ip, pp, msg)
 
-    # 2. 读取 CSV
+    # 2. Read CSV
     print(f"[Peer/Leader] Loading details-{year}.csv ...")
     records = load_csv(year)
     if records is None:
@@ -221,7 +221,7 @@ def leader_setup_dht(sock, m_port, p_port, manager_addr, n, year, tuples):
     s = next_prime(2 * l)
     print(f"[Peer/Leader] Total records: {l}, hash table size s={s}")
 
-    # 每个节点的记录计数（用于打印）
+    # counters for number of records per node (for printing)
     count = [0] * n
     local_hash_table = {}
 
@@ -238,20 +238,20 @@ def leader_setup_dht(sock, m_port, p_port, manager_addr, n, year, tuples):
         if target_id == my_id:
             local_hash_table[pos] = record
         else:
-            # 沿 ring 转发
+            # forward along the ring
             fields = list(record.values())
             record_str = "|".join(str(f) for f in fields)
             msg = f"store {target_id} {pos} {record_str}"
             rip, rport = right_neighbour
             send_to_peer(sock, rip, rport, msg)
 
-    # 3. 打印统计
+    # 3. Print stats
     print("\n[Peer/Leader] ── DHT Record Distribution ──")
     for i, name_ip_port in enumerate(peer_tuples):
         print(f"  Node {i} ({name_ip_port[0]}): {count[i]} records")
     print()
 
-    # 4. 发送 dht-complete
+    # 4. Send dht-complete
     my_name = peer_tuples[0][0]
     response = send_to_manager(sock, manager_addr, f"dht-complete {my_name}")
     if response.startswith("SUCCESS"):
@@ -261,17 +261,17 @@ def leader_setup_dht(sock, m_port, p_port, manager_addr, n, year, tuples):
 
 
 # ──────────────────────────────────────────────
-# 非 Leader peer 等待 set-id
+# Non-leader peer waits for set-id
 # ──────────────────────────────────────────────
 
 def peer_wait_for_set_id(sock):
-    """非 leader peer 注册后进入等待，直到收到 set-id"""
+    """Non-leader peer registers and waits until it receives set-id"""
     print("[Peer] Waiting for set-id from leader...")
     while True:
         data, addr = sock.recvfrom(BUFFER_SIZE)
         keep_going = handle_peer_message(sock, data)
         if not keep_going:
-            # set-id 已处理，继续监听 store 命令
+            # set-id handled, continue listening for store commands
             print("[Peer] Now listening for store commands...")
             peer_listen_for_stores(sock)
             return
@@ -279,12 +279,12 @@ def peer_wait_for_set_id(sock):
 
 def peer_listen_for_stores(sock):
     """
-    非 leader peer 监听 store 命令。
-    因为 Milestone 没有明确的结束信号，
-    我们设置一个短 timeout，
-    当一段时间没有消息时认为 setup 完成。
+    Non-leader peer listens for store commands.
+    Because Milestone has no explicit finish signal,
+    we set a short timeout and consider setup complete
+    when no messages arrive for a while.
     """
-    sock.settimeout(3.0)   # 3 秒没收到消息则认为完成
+    sock.settimeout(3.0)   # consider setup complete if no messages for 3 seconds
     while True:
         try:
             data, addr = sock.recvfrom(BUFFER_SIZE)
@@ -296,7 +296,7 @@ def peer_listen_for_stores(sock):
 
 
 # ──────────────────────────────────────────────
-# 主程序
+# Main program
 # ──────────────────────────────────────────────
 
 def main():
@@ -308,10 +308,9 @@ def main():
     manager_port = int(sys.argv[2])
     manager_addr = (manager_ip, manager_port)
 
-    # peer 自己的 socket（m_port 和 p_port 从 register 命令里读取）
-    # 我们用同一个 socket 绑定 m_port（manager通信），
-    # 另一个 socket 绑定 p_port（peer间通信）
-    # 为简单起见，Milestone 中我们先用同一个 socket
+    # Peer sockets (m_port and p_port are read from the register command)
+    # We bind one socket to m_port (manager communication) and another socket to p_port (peer-to-peer communication)
+    # For simplicity, in the Milestone we will use the same socket first
 
     registered   = False
     my_name      = None
@@ -344,11 +343,11 @@ def main():
             m_port = int(m_port_s)
             p_port = int(p_port_s)
 
-            # 创建 manager socket
+            # create manager socket
             sock_m = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock_m.bind(("", m_port))
 
-            # 创建 peer socket
+            # create peer socket
             sock_p = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock_p.bind(("", p_port))
 
@@ -385,7 +384,7 @@ def main():
                 print(f"[Peer] setup-dht failed: {response}")
                 continue
 
-            # 解析回复：SUCCESS <n> <yyyy> name0 ip0 p0 name1 ip1 p1 ...
+            # parse reply: SUCCESS <n> <yyyy> name0 ip0 p0 name1 ip1 p1 ...
             resp_parts = response.split()
             # resp_parts[0] = SUCCESS
             # resp_parts[1] = n
@@ -401,7 +400,7 @@ def main():
             leader_setup_dht(sock_p, my_m_port, my_p_port, manager_addr,
                              n, yyyy, tuples)
 
-        # ── dht-complete（手动）─────────────────
+        # ── dht-complete (manual) ──────────────────
         elif command == "dht-complete":
             if not registered:
                 print("[Peer] ERROR: must register first")
@@ -412,7 +411,7 @@ def main():
             _, peer_name = parts
             response = send_to_manager(sock_m, manager_addr, f"dht-complete {peer_name}")
 
-        # ── wait（让非 leader peer 进入等待）──────
+        # ── wait (let non-leader peer enter waiting state) ────
         elif command == "wait":
             if sock_p is None:
                 print("[Peer] ERROR: must register first")
