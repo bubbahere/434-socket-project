@@ -10,17 +10,17 @@ import sys
 import random
 
 # ──────────────────────────────────────────────
-# 常量
+# Constants
 # ──────────────────────────────────────────────
 BUFFER_SIZE = 4096
 
-# Peer 状态
+# Peer states
 STATE_FREE   = "Free"
 STATE_LEADER = "Leader"
 STATE_INDHT  = "InDHT"
 
 # ──────────────────────────────────────────────
-# 全局状态
+# Global state
 # ──────────────────────────────────────────────
 peers = {}
 # peers[peer_name] = {
@@ -28,16 +28,16 @@ peers = {}
 #   "m_port": int,
 #   "p_port": int,
 #   "state": str,
-#   "addr": (ip, m_port)   ← 用于回复
+#   "addr": (ip, m_port)   ← used for sending replies
 # }
 
-dht_exists    = False   # DHT 是否已建立完成
-dht_building  = False   # DHT 是否正在构建（等待 dht-complete）
-dht_leader    = None    # 当前 leader 的 peer_name
+dht_exists    = False   # Whether a DHT has been fully established
+dht_building  = False   # Whether a DHT is currently being built (waiting for dht-complete)
+dht_leader    = None    # Current leader peer_name
 
 
 def find_free_peers(exclude=None):
-    """返回所有 Free 状态的 peer 名字列表（排除 exclude）"""
+    """Return a list of peer names in FREE state (excluding 'exclude')"""
     return [name for name, info in peers.items()
             if info["state"] == STATE_FREE and name != exclude]
 
@@ -56,13 +56,13 @@ def handle_register(parts, addr, sock):
         send_response(sock, addr, "FAILURE bad-port")
         return
 
-    # 检查重复
+    # Check duplicate peer name
     if peer_name in peers:
         print(f"[Manager] REGISTER FAILURE: {peer_name} already registered")
         send_response(sock, addr, "FAILURE duplicate-name")
         return
 
-    # 检查端口唯一性
+    # Check port uniqueness
     for name, info in peers.items():
         if info["m_port"] == m_port or info["p_port"] == p_port \
                 or info["m_port"] == p_port or info["p_port"] == m_port:
@@ -96,7 +96,7 @@ def handle_setup_dht(parts, addr, sock):
         send_response(sock, addr, "FAILURE bad-n")
         return
 
-    # 各种失败条件
+    # Various failure conditions
     if peer_name not in peers:
         print(f"[Manager] SETUP-DHT FAILURE: {peer_name} not registered")
         send_response(sock, addr, "FAILURE not-registered")
@@ -116,10 +116,10 @@ def handle_setup_dht(parts, addr, sock):
         send_response(sock, addr, "FAILURE not-enough-peers")
         return
 
-    # 选出 n-1 个随机 Free peer
+    # Select n-1 random FREE peers
     chosen = random.sample(free_peers, n - 1)
 
-    # 更新状态
+    # Update states
     peers[peer_name]["state"] = STATE_LEADER
     for name in chosen:
         peers[name]["state"] = STATE_INDHT
@@ -127,8 +127,9 @@ def handle_setup_dht(parts, addr, sock):
     dht_building = True
     dht_leader   = peer_name
 
-    # 构建返回消息：SUCCESS <n> <YYYY> peer0 ip0 p-port0 peer1 ip1 p-port1 ...
-    # leader 的 3-tuple 排第一
+    # Build response message:
+    # SUCCESS <n> <YYYY> peer0 ip0 p-port0 peer1 ip1 p-port1 ...
+    # Leader's 3-tuple appears first
     tuples = []
     tuples.append(f"{peer_name} {peers[peer_name]['ip']} {peers[peer_name]['p_port']}")
     for name in chosen:
@@ -161,7 +162,7 @@ def handle_dht_complete(parts, addr, sock):
 
 
 def send_response(sock, addr, message):
-    """发送 UDP 响应"""
+    """Send a UDP response"""
     sock.sendto(message.encode(), addr)
     print(f"[Manager] --> {addr}: {message}")
 
@@ -188,7 +189,7 @@ def main():
 
         command = parts[0].lower()
 
-        # 如果 DHT 正在构建，只接受 dht-complete
+        # If DHT is being built, only accept dht-complete
         if dht_building and command != "dht-complete":
             print(f"[Manager] FAILURE: DHT is being built, only dht-complete accepted")
             send_response(sock, addr, "FAILURE dht-building")
